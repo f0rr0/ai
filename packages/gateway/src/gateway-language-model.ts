@@ -101,7 +101,14 @@ export class GatewayLanguageModel implements LanguageModelV4 {
       return {
         ...responseBody,
         request: { body: args },
-        response: { headers: responseHeaders, body: rawResponse },
+        response: {
+          modelId:
+            responseHeaders?.['x-model-id'] ??
+            responseBody.response?.modelId ??
+            this.modelId,
+          headers: responseHeaders,
+          body: rawResponse,
+        },
         warnings,
       };
     } catch (error) {
@@ -141,6 +148,8 @@ export class GatewayLanguageModel implements LanguageModelV4 {
         fetch: this.config.fetch,
       });
 
+      const responseModelId = responseHeaders?.['x-model-id'];
+
       return {
         stream: response.pipeThrough(
           new TransformStream<
@@ -168,6 +177,13 @@ export class GatewayLanguageModel implements LanguageModelV4 {
                   typeof streamPart.timestamp === 'string'
                 ) {
                   streamPart.timestamp = new Date(streamPart.timestamp);
+                }
+
+                if (
+                  streamPart.type === 'response-metadata' &&
+                  responseModelId != null
+                ) {
+                  streamPart.modelId = responseModelId;
                 }
 
                 controller.enqueue(streamPart);

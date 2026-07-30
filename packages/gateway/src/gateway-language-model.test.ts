@@ -126,6 +126,79 @@ describe('GatewayLanguageModel', () => {
       });
     });
 
+    it('should use the routed model id response header', async () => {
+      server.urls['https://api.test.com/language-model'].response = {
+        type: 'json-value',
+        headers: {
+          'x-model-id': 'google/gemini-3.6-flash',
+        },
+        body: {
+          content: [{ type: 'text', text: 'Hello' }],
+          finishReason: 'stop',
+          usage: {
+            inputTokens: {
+              total: 1,
+              noCache: 1,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: {
+              total: 1,
+              text: 1,
+              reasoning: undefined,
+            },
+          },
+          response: {
+            id: 'response-id',
+            modelId: 'gemini-3-flash-preview',
+          },
+        },
+      };
+
+      const result = await createTestModel().doGenerate({
+        prompt: TEST_PROMPT,
+      });
+
+      expect(result.response).toMatchObject({
+        modelId: 'google/gemini-3.6-flash',
+        headers: {
+          'x-model-id': 'google/gemini-3.6-flash',
+        },
+      });
+    });
+
+    it('should preserve the response model id when the header is absent', async () => {
+      server.urls['https://api.test.com/language-model'].response = {
+        type: 'json-value',
+        body: {
+          content: [{ type: 'text', text: 'Hello' }],
+          finishReason: 'stop',
+          usage: {
+            inputTokens: {
+              total: 1,
+              noCache: 1,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: {
+              total: 1,
+              text: 1,
+              reasoning: undefined,
+            },
+          },
+          response: {
+            modelId: 'provider-model-id',
+          },
+        },
+      };
+
+      const result = await createTestModel().doGenerate({
+        prompt: TEST_PROMPT,
+      });
+
+      expect(result.response?.modelId).toBe('provider-model-id');
+    });
+
     it('should remove abortSignal from the request body', async () => {
       prepareJsonResponse({ content: { type: 'text', text: 'Test response' } });
 
@@ -1208,6 +1281,35 @@ describe('GatewayLanguageModel', () => {
   });
 
   describe('timestamp conversion', () => {
+    it('should use the routed model id response header', async () => {
+      server.urls['https://api.test.com/language-model'].response = {
+        type: 'stream-chunks',
+        headers: {
+          'x-model-id': 'google/gemini-3.6-flash',
+        },
+        chunks: [
+          `data: {"type":"response-metadata","id":"test-id","modelId":"gemini-3-flash-preview"}\n\n`,
+          `data: {"type":"finish","finishReason":"stop","usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n`,
+        ],
+      };
+
+      const { stream } = await createTestModel().doStream({
+        prompt: TEST_PROMPT,
+        includeRawChunks: false,
+      });
+
+      expect(await convertReadableStreamToArray(stream)).toMatchObject([
+        {
+          type: 'response-metadata',
+          id: 'test-id',
+          modelId: 'google/gemini-3.6-flash',
+        },
+        {
+          type: 'finish',
+        },
+      ]);
+    });
+
     it('should convert timestamp strings to Date objects in response-metadata chunks', async () => {
       const timestampString = '2023-12-07T10:30:00.000Z';
 
